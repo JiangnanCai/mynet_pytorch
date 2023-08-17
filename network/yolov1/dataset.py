@@ -8,8 +8,8 @@ import cv2
 
 
 class Voc2012(Dataset):
-    images_root = '/home/cai/Documents/object_detection/DataSet/images/'
-    labels_root = '/home/cai/Documents/object_detection/DataSet/labels/'
+    images_root = '../../DataSet/images/'
+    labels_root = '../../DataSet/labels/'
 
     def __init__(self,
                  is_train,
@@ -48,13 +48,15 @@ class Voc2012(Dataset):
         return labels
 
     def __getitem__(self, item):
-        img = cv2.imread( self.image_paths[item])
+        img = cv2.imread(self.image_paths[item])
         cls, bboxes = self.labels[item][:, 0], self.labels[item][:, 1:]
 
         if self.is_train:
-            # img, bboxes = BasicDataAugmentation.random_flip(img, bboxes)
+            img, bboxes = BasicDataAugmentation.random_flip(img, bboxes)
+            img, bboxes = BasicDataAugmentation.random_scale(img, bboxes)
             img = BasicDataAugmentation.random_blur(img)
-            img = BasicDataAugmentation.randon_brightness(img)
+            img = BasicDataAugmentation.random_saturation(img)
+            img = BasicDataAugmentation.random_brightness(img)
 
         inputs = self.label2input(cls, bboxes)
 
@@ -64,10 +66,12 @@ class Voc2012(Dataset):
         #     for j in range(self.S):
         #         if inputs[i, j, 4] == 1.:
         #             print(i, j, inputs[i, j, :])
-        #             c_x, c_y, w, h = inputs[i, j, :][0] * width, inputs[i, j, :][1] * height, inputs[i, j, :][2] * width, inputs[i, j, :][3] * height
+        #             c_x, c_y = inputs[i, j, :][0] * width, inputs[i, j, :][1] * height  # denormalize
+        #             w, h = inputs[i, j, :][2] * width, inputs[i, j, :][3] * height  # denormalize
         #             x1, y1 = int(c_x - 1/2 * w), int(c_y - 1/2 * h)
         #             x2, y2 = int(c_x + 1/2 * w), int(c_y + 1/2 * h)
         #             img = cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        #             print("------------------------")
         #
         # cv2.namedWindow("img", cv2.WINDOW_NORMAL)
         # cv2.imshow("img", img)
