@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
@@ -6,10 +8,11 @@ from dataset import Voc2012
 from backbone.yolov1_backbone import YoloV1Backbone
 from net import YoloV1
 from loss import Yolov1Loss
-
+from evaluate import map_calculate
 from torch.utils.tensorboard import SummaryWriter
-
-
+from module.conv import ConvLeakyReLU
+from backbone.resnet import resnet34
+import torch.nn as nn
 import os
 import numpy as np
 import math
@@ -25,9 +28,11 @@ init_lr = 0.001
 base_lr = 0.01
 momentum = 0.9
 weight_decay = 5.0e-4
-num_epoch = 200
-batch_size = 16
+num_epoch = 500
+batch_size = 32
 num_workers = 4
+
+writer = SummaryWriter('./train.log')
 
 
 def update_lr(optimizer, epoch, burning_base, burning_exp=4.0):
@@ -50,11 +55,20 @@ def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
 
+# 论文中的yolov1 backbone
 
-backbone = YoloV1Backbone(conv_only=True, bn=True, init_weight=True)
-backbone.features = torch.nn.DataParallel(backbone.features)
+# backbone = YoloV1Backbone(conv_only=True, bn=True, init_weight=True)
+# backbone.features = torch.nn.DataParallel(backbone.features)
+# yolov1 = YoloV1(backbone.features)
 
-yolov1 = YoloV1(backbone.features)
+
+# resnet作为backbone
+resnet = resnet34(pretrained=True)
+backbone = nn.Sequential(*list(resnet.children())[:-2],
+                         ConvLeakyReLU(512, 1024, (3, 3), stride=2, padding=1, bn=True))
+backbone = nn.DataParallel(backbone)
+yolov1 = YoloV1(backbone=backbone)
+
 yolov1.conv_layers = torch.nn.DataParallel(yolov1.conv_layers)
 yolov1.cuda()
 
@@ -72,13 +86,13 @@ print("number of train images: ", len(train_dataset))
 best_val_loss = np.inf
 
 for epoch in range(num_epoch):
-    print('\n')
-    print(f"Starting epoch {epoch} / {num_epoch}")
+    # print('\n')
+    # print(f"Starting epoch {epoch} / {num_epoch}")
 
     yolov1.train()
     total_loss = 0.0
     total_batch = 0
-
+    start = time.perf_counter()
     for i, (imgs, inputs) in enumerate(train_dataloader):
         update_lr(optimizer, epoch, float(i) / float(len(train_dataloader) - 1))
         lr = get_lr(optimizer)
@@ -97,8 +111,10 @@ for epoch in range(num_epoch):
         optimizer.step()
 
         if i % print_freq == 0:
-            print(f"Epoch: [{epoch}/{num_epoch}], Iter: [{i}/{len(train_dataloader)}], LR: {lr}, Loss: {loss_this_iter},"
-                  f" Average Loss: {total_loss/float(total_batch)}")
+            print(
+                f"\rEpoch: [{epoch}/{num_epoch}], Iter: [{i}/{len(train_dataloader)}],"
+                f" LR: {round(lr, 5)}, Loss: {round(loss_this_iter, 5)},"
+                f" Average Loss: {round(total_loss / float(total_batch), 2)}", end="")
 
     yolov1.eval()
     val_loss = 0.0
@@ -110,9 +126,12 @@ for epoch in range(num_epoch):
 
         with torch.no_grad():
             preds = yolov1(imgs)
+
+        # 计算 loss
         loss = criterion(preds, inputs)
         loss_this_iter = loss.item()
         val_loss += loss_this_iter * batch_size_this_iter
+
         total_batch += batch_size_this_iter
     val_loss /= float(total_batch)
 
@@ -120,9 +139,10 @@ for epoch in range(num_epoch):
     if best_val_loss > val_loss:
         best_val_loss = val_loss
         torch.save(yolov1.state_dict(), './model_best.pth')
-
-    print(f"Epoch [{epoch}/{num_epoch}], Val loss: {val_loss}, Best val loss: {best_val_loss}")
-
-
-
-
+    print("")
+    map = map_calculate()
+    writer.add_scalar('mAP', map, epoch)
+    writer.add_scalar('loss', val_loss, epoch)
+    print(f"Epoch [{epoch}/{num_epoch}], Val loss: {round(val_loss, 4)}, Best val loss: {round(best_val_loss, 4)}, "
+          f"mAP: {round(map, 4)}, Cost time: {round(time.perf_counter()-start, 2)}s")
+    print("-" * 200)

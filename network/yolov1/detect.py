@@ -1,7 +1,9 @@
 import torch
+import torch.nn as nn
 from torch.autograd import Variable
 import torchvision.transforms as transforms
-
+from module.conv import ConvLeakyReLU
+from backbone.resnet import resnet34
 import os
 import cv2
 import numpy as np
@@ -76,14 +78,21 @@ class YOLODetector:
         assert torch.cuda.is_available(), 'Current implementation does not support CPU mode. Enable CUDA.'
 
         # Load YOLO model.
-        print("Loading YOLO model...")
-        darknet = YoloV1Backbone(conv_only=True, bn=True, init_weight=True)
-        darknet.features = torch.nn.DataParallel(darknet.features)
-        self.yolo = YoloV1(darknet.features)
+        # print("Loading YOLO model...")
+        # darknet = YoloV1Backbone(conv_only=True, bn=True, init_weight=True)
+        # darknet.features = torch.nn.DataParallel(darknet.features)
+        # self.yolo = YoloV1(darknet.features)
+
+        resnet = resnet34(pretrained=True)
+        backbone = nn.Sequential(*list(resnet.children())[:-2],
+                                 ConvLeakyReLU(512, 1024, (3, 3), stride=2, padding=1, bn=True))
+        backbone = nn.DataParallel(backbone)
+        self.yolo = YoloV1(backbone)
+
         self.yolo.conv_layers = torch.nn.DataParallel(self.yolo.conv_layers)
         self.yolo.load_state_dict(torch.load(model_path))
         self.yolo.cuda()
-        print("Done loading!")
+        # print("Done loading!")
 
         self.yolo.eval()
 
@@ -287,7 +296,7 @@ class YOLODetector:
 
 if __name__ == '__main__':
     # Paths to input/output images.
-    image_path = '/home/cai/Documents/object_detection/VOCtrainval_11-May-2012/VOCdevkit/VOC2012/JPEGImages/2007_000175.jpg'
+    image_path = '/home/cai/Documents/object_detection/VOCtrainval_11-May-2012/VOCdevkit/VOC2012/JPEGImages/2007_005460.jpg'
     out_path = 'result.png'
     # Path to the yolo weight.
     model_path = './model_latest.pth'

@@ -119,7 +119,7 @@ class ResNet(Module):
         self.layer_2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer_3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer_4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.layer_5 = ResNet._make_detnet_layer(512)  # why 2048?
+        self.layer_5 = ResNet._make_detnet_layer(2048)  # why 2048?
 
         self.out_block = Sequential(
             Conv2d(256, 30, (3, 3), stride=1, padding=0, bias=False),
@@ -172,7 +172,6 @@ class ResNet(Module):
         x = self.layer_3(x)
         x = self.layer_4(x)
         x = self.layer_5(x)
-
         x = self.out_block(x)
         x = torch.sigmoid(x)
         x = x.permute(0, 2, 3, 1)
@@ -216,7 +215,7 @@ def resnet152(pretrained=False, **kwargs):
 
 if __name__ == '__main__':
     device = torch.device("cuda")
-    model = resnet34().to(device)
+    model = resnet101(pretrained=True).to(device)
     dummy_input = torch.randn(5, 3, 512, 512).to(device)
     model.eval()
     output = model(dummy_input)
