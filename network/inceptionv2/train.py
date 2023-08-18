@@ -4,7 +4,7 @@ from torch.nn import CrossEntropyLoss
 from torchvision import transforms, datasets
 import os
 import torch.optim as optim
-from inception_v2.network import InceptionV2
+from backbone.inceptionv2 import InceptionV2
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 data_root = r'/home/cai/Documents/Inception/archive(1)'
